@@ -1,0 +1,169 @@
+================================================================================
+                         SKYNEX SYSTEM ARCHITECTURE & STRUCTURE
+================================================================================
+Project: SkyNex — AI-Driven Anomaly Detection in Component Burn-In & Screening
+Hackathon / Context: SIH 2026 (Problem Statement 26170)
+Target Application: High-Reliability Semiconductor & Component Screening
+================================================================================
+
+1. TECHNOLOGIES & STACK
+--------------------------------------------------------------------------------
+* Programming Language: Python 3.12+
+* Machine Learning & Analytics:
+  - Scikit-Learn (Isolation Forest, statistical preprocessing)
+  - XGBoost (Gradient Boosting Time-Series Early Drift Prediction)
+  - Joblib (Model serialization and loading)
+  - NumPy & Pandas (Data processing, vector operations, statistical bounds)
+* Backend Storage & Persistence:
+  - SQLite 3 (Audit logging, QA engineer decisions, decision history)
+* Frontend / Visualization UI:
+  - Streamlit (Interactive dashboard UI, custom CSS theme integration)
+  - Plotly / HTML-CSS SVG Cards (Data visualization and chart rendering)
+* Testing & Quality Assurance:
+  - Pytest (Unit testing, integration testing, audit trace validation)
+
+
+2. SYSTEM ARCHITECTURE & PIPELINE DATA FLOW
+--------------------------------------------------------------------------------
+
+                   ┌───────────────────────────────────────┐
+                   │    Burn-In Raw Dataset (0h - 168h)    │
+                   └──────────────────┬────────────────────┘
+                                      │
+                                      ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │ Module A: Dynamic Anomaly Detector                                │
+    │  - Lot-Relative Z-Score Thresholding (|Z| > 3.0)                  │
+    │  - Interquartile Range Bounds (IQR 1.5x)                          │
+    │  - Isolation Forest Contamination Modeling (0.08)                 │
+    └─────────────────────────────────┬─────────────────────────────────┘
+                                      │
+                                      ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │ Module B: Early Drift Predictor                                   │
+    │  - Early Burn-in Slope Calculation (0h -> 24h Delta & Rate)       │
+    │  - Pre-trained XGBoost Model (Predict 168h Degradation Value)     │
+    │  - Safety Slope Thresholding (95th Percentile Dynamic Cap)        │
+    └─────────────────────────────────┬─────────────────────────────────┘
+                                      │
+                                      ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │ Multidimensional Risk Engine                                      │
+    │  - Weighted Risk Score Computation (45% Outlier + 40% Drift)      │
+    │  - Intersection Penalty (+20 for Dual Anomaly Detection)          │
+    │  - Classification (LOW, MEDIUM, HIGH, CRITICAL)                   │
+    └─────────────────────────────────┬─────────────────────────────────┘
+                                      │
+                                      ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │ Unified Reasoning & QA Action Engine                              │
+    │  - Natural Language Root-Cause Explanation Generation             │
+    │  - Recommendation Engine (PASS, EXTEND_BURN_IN, RETEST, REJECT)  │
+    └─────────────────────────────────┬─────────────────────────────────┘
+                                      │
+
+3. DIRECTORY & FILE STRUCTURE
+--------------------------------------------------------------------------------
+SkyNex/
+│
+├── assets/                         # Branding and UI references
+│   ├── skynex_logo.png             # SkyNex official logo
+│   └── ui_reference/               # Visual reference specs for frontend UI
+│
+├── data/                           # Burn-in screening datasets
+│   └── raw/
+│       ├── burnin_data_wide.csv    # Wide format (Value_0h, 24h, 96h, 168h)
+│       └── burnin_data_long.csv    # Time-series long format
+│
+├── ml/                             # Core Machine Learning Algorithms
+│   ├── __init__.py
+│   ├── anomaly_detection.py        # Module A: Dynamic outlier detection
+│   └── drift_prediction.py         # Module B: XGBoost time-series drift predictor
+│
+├── models/                         # Trained ML artifact storage
+│   ├── linear_model.joblib         # Baseline linear predictor
+│   └── xgb_model.joblib            # Trained XGBoost regressor model
+│
+├── engine/                         # Core Pipeline Orchestration
+│   ├── __init__.py
+│   ├── skynex_engine.py            # Primary pipeline manager & single-component interface
+│   ├── risk_engine.py              # Composite risk calculator & classifier
+│   └── explanation.py              # XAI narrative root-cause builder
+│
+├── qa/                             # QA Workflow & Human-in-the-Loop Engine
+│   ├── __init__.py
+│   ├── recommendation.py           # Automated action recommendation logic
+│   ├── decision.py                 # Engineer decision data models
+│   ├── database.py                 # SQLite database access object & schema
+│   └── qa_decisions.db             # SQLite persistent database file
+│
+├── reports/                        # Report Generation & Data Exporter
+│   ├── __init__.py
+│   ├── report_generator.py         # Generates final CSV/JSON reports & lot yields
+│   └── output/                     # Output destination for generated reports
+│
+├── ui/                             # Streamlit UI Front-End
+│   ├── __init__.py
+│   ├── app.py                      # Primary Streamlit web application entry point
+│   └── components/                 # Reusable Streamlit modular UI components
+│       ├── sidebar.py              # Navigation sidebar
+│       ├── kpi_cards.py            # Top KPI metrics strip
+│       ├── charts.py               # Summary donut charts & risk distributions
+│       ├── priority_table.py       # High-risk interactive component table
+│       └── bottom_strip.py         # Feature highlight strip
+│
+├── tests/                          # Automated Pytest Test Suite
+│   ├── audit_check.py              # Audit logging checks
+│   ├── audit_trace_test.py         # Traceability verification
+│   ├── test_module_a.py            # Module A standalone tests
+│   ├── test_module_a_validation.py # Module A statistical bound checks
+│   └── test_pipeline.py            # End-to-end integrated pipeline test
+│
+├── config.py                       # Centralized global configuration & parameters
+├── requirements.txt                # Python package dependency manifest
+└── README.md                       # Main project overview
+
+
+4. METHODOLOGY & PROCESS FOR IMPLEMENTATION
+--------------------------------------------------------------------------------
+
+[Step 1] Lot-Relative Dynamic Anomaly Detection (Module A)
+  * Dynamic computation per manufacturing lot rather than static global limits.
+  * Applies 3 complementary anomaly algorithms simultaneously:
+    1. Z-Score (|Z| > 3.0 relative to lot mean and standard deviation)
+    2. Interquartile Range (IQR outside Q1 - 1.5*IQR to Q3 + 1.5*IQR)
+    3. Isolation Forest (Unsupervised tree ensemble modeling anomaly density)
+
+[Step 2] Early Burn-In Time-Series Drift Forecasting (Module B)
+  * Extracts early 0h -> 24h reading trajectories (delta_24h, pct_change_24h, slope_0_24).
+  * Feeds features into pre-trained XGBoost Regressor model to predict 168h end-of-test value.
+  * Evaluates predicted degradation slope against safety threshold (95th percentile).
+
+[Step 3] Multidimensional Composite Risk Scoring
+  * Risk Score = (0.45 * Anomaly Score) + (0.40 * Drift Score) + Intersection Penalty
+  * Penalty (+20) applied for dual-module anomaly detection.
+  * Categorizes risk into: LOW (<25), MEDIUM (25-49), HIGH (50-74), CRITICAL (75-100).
+
+[Step 4] Explainable AI (XAI) & Action Recommendation
+  * Explanation Engine auto-generates human-readable engineering root causes.
+  * QA Recommendation Engine maps risk levels to actions: PASS, EXTEND_BURN_IN, RETEST, REJECT.
+
+[Step 5] Human-in-the-Loop QA Decisioning & Audit Trail
+  * QA Engineers review recommendations in Streamlit UI workspace.
+  * Immutably logged in SQLite database (`qa_decisions.db`) with timestamps and notes.
+
+================================================================================
+
+                                      ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │ QA Engineer Review & Audit Logging                                │
+    │  - Human-in-the-Loop Override / Confirmation                       │
+    │  - SQLite Persistent Audit Trail (`qa_decisions.db`)              │
+    └─────────────────────────────────┬─────────────────────────────────┘
+                                      │
+                                      ▼
+    ┌───────────────────────────────────────────────────────────────────┐
+    │ Multi-Channel Export & Visual Dashboard                           │
+    │  - Streamlit UI Dashboard & Interactive Review Interface          │
+    │  - CSV / JSON Automated Report Exporter                           │
+    └───────────────────────────────────────────────────────────────────┘
