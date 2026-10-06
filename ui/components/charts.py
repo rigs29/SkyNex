@@ -2,125 +2,116 @@
 SkyNex UI Charts Component
 Renders the 3 Donut Summary Cards: Lots Summary, QA Status, and Risk Distribution.
 Driven directly by real backend screening data.
-Donuts are SVG (not Plotly) so they stay full circles inside Streamlit columns.
 """
 
-import math
-from typing import List, Optional, Sequence, Tuple
-
-import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
+import plotly.graph_objects as go
+import pandas as pd
+from typing import Dict, Any, Optional
 
 
-def _polar(cx: float, cy: float, r: float, angle_deg: float) -> Tuple[float, float]:
-    """Convert polar degrees (0° = 12 o'clock, clockwise) to cartesian."""
-    rad = math.radians(angle_deg - 90)
-    return cx + r * math.cos(rad), cy + r * math.sin(rad)
+def create_lots_donut(total_lots: int = 25) -> go.Figure:
+    """Creates the segmented Lots Summary donut chart."""
+    labels = ["L01 - L05", "L06 - L10", "L11 - L15", "L16 - L20", "L21 - L25"]
+    values = [20, 20, 20, 20, 20]
+    colors = ["#1D63FF", "#8B5CF6", "#F97316", "#06B6D4", "#10B981"]
 
-
-def _donut_slice_d(
-    cx: float,
-    cy: float,
-    inner_r: float,
-    outer_r: float,
-    start_deg: float,
-    end_deg: float,
-) -> str:
-    """SVG path for one donut slice. Angles in degrees, clockwise from 12 o'clock."""
-    sweep = (end_deg - start_deg) % 360
-    if sweep <= 0.05:
-        sweep = 0.05
-        end_deg = start_deg + sweep
-    large = 1 if sweep > 180 else 0
-    ox1, oy1 = _polar(cx, cy, outer_r, start_deg)
-    ox2, oy2 = _polar(cx, cy, outer_r, end_deg)
-    ix2, iy2 = _polar(cx, cy, inner_r, end_deg)
-    ix1, iy1 = _polar(cx, cy, inner_r, start_deg)
-    return (
-        f"M {ox1:.3f} {oy1:.3f} "
-        f"A {outer_r:.3f} {outer_r:.3f} 0 {large} 1 {ox2:.3f} {oy2:.3f} "
-        f"L {ix2:.3f} {iy2:.3f} "
-        f"A {inner_r:.3f} {inner_r:.3f} 0 {large} 0 {ix1:.3f} {iy1:.3f} Z"
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.62,
+                marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
+                textinfo="none",
+                hoverinfo="label+percent",
+                sort=False,
+            )
+        ]
     )
-
-
-def svg_donut(
-    values: Sequence[float],
-    colors: Sequence[str],
-    size: int = 128,
-    thickness: float = 18,
-    gap_deg: float = 3.2,
-    center_html: str = "",
-) -> str:
-    """Full-circle donut with visible gaps between slices."""
-    cleaned: List[float] = [max(0.0, float(v)) for v in values]
-    total = sum(cleaned)
-    if total <= 0:
-        cleaned = [1.0] * len(values)
-        total = float(len(values))
-
-    cx = cy = size / 2.0
-    outer_r = size / 2.0 - 1.5
-    inner_r = max(outer_r - thickness, outer_r * 0.55)
-
-    paths = []
-    cursor = 0.0
-    n = len(cleaned)
-    for i, (val, color) in enumerate(zip(cleaned, colors)):
-        sweep = 360.0 * (val / total)
-        gap = gap_deg if n > 1 and sweep > gap_deg * 2 else 0.0
-        start = cursor + gap / 2.0
-        end = cursor + sweep - gap / 2.0
-        d = _donut_slice_d(cx, cy, inner_r, outer_r, start, end)
-        paths.append(f'<path d="{d}" fill="{color}" />')
-        cursor += sweep
-
-    center_block = ""
-    if center_html:
-        center_block = (
-            f'<div style="position:absolute;inset:0;display:flex;'
-            f'align-items:center;justify-content:center;pointer-events:none;">'
-            f"{center_html}</div>"
-        )
-
-    return (
-        f'<div style="position:relative;width:{size}px;height:{size}px;flex-shrink:0;">'
-        f'<svg width="{size}" height="{size}" viewBox="0 0 {size} {size}" '
-        f'style="display:block;overflow:visible;">'
-        f"{''.join(paths)}"
-        f"</svg>{center_block}</div>"
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=130,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
+    return fig
 
 
-CLIPBOARD_ICON = """
-<svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="6" y="3" width="12" height="18" rx="2" fill="#E8D5B5" stroke="#C4A574" stroke-width="1.4"/>
-  <rect x="8.5" y="1.8" width="7" height="3.2" rx="1" fill="#D4C4A8" stroke="#C4A574" stroke-width="1"/>
-  <path d="M9 10h6M9 13.5h6M9 17h4" stroke="#3B82F6" stroke-width="1.4" stroke-linecap="round"/>
-  <circle cx="16.2" cy="17.2" r="2.4" fill="#EF4444"/>
-</svg>
-"""
+def create_qa_donut(pass_val: int = 882, hold_val: int = 13, fail_val: int = 105) -> go.Figure:
+    """Creates the QA Status donut chart with center icon."""
+    labels = ["PASS", "HOLD", "FAIL"]
+    values = [max(1, pass_val), max(1, hold_val), max(1, fail_val)]
+    colors = ["#10B981", "#F59E0B", "#EF4444"]
 
-
-def _legend_row(color: str, label: str, right: str, extra_top: str = "0") -> str:
-    return (
-        f'<div class="chart-legend-row" style="margin-top:{extra_top};">'
-        f'<span class="chart-legend-left">'
-        f'<span class="chart-legend-dot" style="background:{color};"></span>'
-        f"{label}</span>"
-        f'<span class="chart-legend-right">{right}</span>'
-        f"</div>"
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.62,
+                marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
+                textinfo="none",
+                hoverinfo="label+value+percent",
+                sort=False,
+            )
+        ]
     )
+    fig.add_annotation(
+        text="📋",
+        showarrow=False,
+        font=dict(size=20),
+        x=0.5,
+        y=0.5,
+    )
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=130,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
+
+def create_risk_donut(low_val: int = 882, med_val: int = 13, high_val: int = 105) -> go.Figure:
+    """Creates the Risk Distribution donut chart."""
+    labels = ["Low Risk", "Medium Risk", "High Risk"]
+    values = [max(1, low_val), max(1, med_val), max(1, high_val)]
+    colors = ["#10B981", "#F97316", "#EF4444"]
+
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.62,
+                marker=dict(colors=colors, line=dict(color="#FFFFFF", width=2)),
+                textinfo="none",
+                hoverinfo="label+value+percent",
+                sort=False,
+            )
+        ]
+    )
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=130,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
 
 
 def render_summary_charts(df: Optional[pd.DataFrame] = None):
     """
     Renders the 3 Donut Summary Cards calculated from actual backend dataset metrics.
+    Uses st.container(border=True) to ensure all elements are enclosed within the card.
     """
     if df is not None and not df.empty:
         total = len(df)
-        total_lots = int(df["lot_id"].nunique())
+        total_lots = df["lot_id"].nunique()
         pass_count = int((df["recommendation"] == "PASS").sum())
         hold_count = int(df["recommendation"].isin(["RETEST", "EXTEND_BURN_IN"]).sum())
         fail_count = int((df["recommendation"] == "REJECT").sum())
@@ -137,170 +128,141 @@ def render_summary_charts(df: Optional[pd.DataFrame] = None):
         med_risk = 13
         high_risk = 105
 
-    total = max(total, 1)
-
-    lots_colors = ["#1D63FF", "#8B5CF6", "#F97316", "#06B6D4", "#10B981"]
-    lots_labels = ["L01 - L05", "L06 - L10", "L11 - L15", "L16 - L20", "L21 - L25"]
-    # Compute actual component count per lot group
-    lot_counts = [0] * 5
-    if df is not None and not df.empty and "lot_id" in df.columns:
-        for lid in df["lot_id"].unique():
-            lot_num = int(str(lid).split("_")[-1])
-            group_idx = min(lot_num // 5, 4)
-            lot_counts[group_idx] += int((df["lot_id"] == lid).sum())
-    else:
-        lot_counts = [200, 200, 200, 200, 200]
-    lots_total = max(sum(lot_counts), 1)
-    lots_pct = [round(c / lots_total * 100) for c in lot_counts]
-    lots_svg = svg_donut(lot_counts, lots_colors, size=118, thickness=17, gap_deg=3.4)
-    lots_legend = "".join(
-        _legend_row(c, lab, f"<b>{p}%</b>") for c, lab, p in zip(lots_colors, lots_labels, lots_pct)
-    )
-
-    qa_svg = svg_donut(
-        [pass_count, hold_count, fail_count],
-        ["#10B981", "#F59E0B", "#EF4444"],
-        size=118,
-        thickness=17,
-        gap_deg=3.0,
-        center_html=CLIPBOARD_ICON,
-    )
-    qa_legend = (
-        _legend_row("#10B981", "PASS", f"<b>{pass_count:,}</b> <span class='pct'>({pass_count / total * 100:.1f}%)</span>")
-        + _legend_row("#F59E0B", "HOLD", f"<b>{hold_count:,}</b> <span class='pct'>({hold_count / total * 100:.1f}%)</span>", "10px")
-        + _legend_row("#EF4444", "FAIL", f"<b>{fail_count:,}</b> <span class='pct'>({fail_count / total * 100:.1f}%)</span>", "10px")
-    )
-
-    risk_svg = svg_donut(
-        [low_risk, med_risk, high_risk],
-        ["#10B981", "#F97316", "#EF4444"],
-        size=118,
-        thickness=17,
-        gap_deg=3.0,
-    )
-    risk_legend = (
-        _legend_row("#10B981", "Low Risk", f"<b>{low_risk:,}</b> <span class='pct'>({low_risk / total * 100:.1f}%)</span>")
-        + _legend_row("#F97316", "Medium Risk", f"<b>{med_risk:,}</b> <span class='pct'>({med_risk / total * 100:.1f}%)</span>", "10px")
-        + _legend_row("#EF4444", "High Risk", f"<b>{high_risk:,}</b> <span class='pct'>({high_risk / total * 100:.1f}%)</span>", "10px")
-    )
-
-    html = f"""
+    st.markdown(
+        """
         <style>
-        html, body {{
-            margin: 0;
-            padding: 0;
-            background: transparent;
-            font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }}
-        .summary-grid {{
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 14px;
-            width: 100%;
-        }}
-        .summary-card {{
-            background: #FFFFFF;
-            border: 1px solid #E2E8F0;
-            border-radius: 14px;
-            padding: 16px 18px 14px 18px;
-            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
-            min-height: 198px;
-        }}
-        .summary-title {{
+        .summary-title {
             font-size: 13px;
             font-weight: 800;
-            letter-spacing: 0.6px;
+            letter-spacing: 0.5px;
             color: #0F172A;
             text-transform: uppercase;
-            margin-bottom: 10px;
-        }}
-        .summary-body {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            min-height: 130px;
-        }}
-        .lots-metric {{
-            min-width: 64px;
-            flex-shrink: 0;
-        }}
-        .lots-metric .lots-num {{
-            font-size: 32px;
-            font-weight: 800;
-            color: #0F172A;
-            line-height: 1;
-        }}
-        .lots-metric .lots-label {{
-            font-size: 12px;
-            color: #64748B;
-            font-weight: 500;
-            margin-top: 6px;
-        }}
-        .chart-legend {{
-            flex: 1;
-            min-width: 0;
-        }}
-        .chart-legend-row {{
+            margin-bottom: 8px;
+        }
+        .chart-legend-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 8px;
-            font-size: 12px;
+            font-size: 11px;
             color: #334155;
             margin-bottom: 5px;
             font-weight: 500;
-        }}
-        .chart-legend-left {{
-            display: flex;
-            align-items: center;
-            min-width: 0;
-            white-space: nowrap;
-        }}
-        .chart-legend-right {{
-            color: #0F172A;
-            font-weight: 600;
-            white-space: nowrap;
-        }}
-        .chart-legend-right .pct {{
-            font-size: 11px;
-            color: #64748B;
-            font-weight: 500;
-        }}
-        .chart-legend-dot {{
+        }
+        .chart-legend-dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
             display: inline-block;
-            margin-right: 7px;
-            flex-shrink: 0;
-        }}
+            margin-right: 6px;
+        }
         </style>
-        <div class="summary-grid">
-            <div class="summary-card">
-                <div class="summary-title">LOTS SUMMARY</div>
-                <div class="summary-body">
-                    <div class="lots-metric">
-                        <div class="lots-num">{total_lots}</div>
-                        <div class="lots-label">Total Lots</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(3)
+
+    # 1. LOTS SUMMARY
+    with cols[0]:
+        with st.container(border=True):
+            st.markdown('<div class="summary-title">LOTS SUMMARY</div>', unsafe_allow_html=True)
+            c_left, c_mid, c_right = st.columns([1.0, 1.4, 1.4])
+            with c_left:
+                st.markdown(
+                    f"""
+                    <div style="padding-top: 22px;">
+                        <div style="font-size: 28px; font-weight: 800; color: #0F172A; line-height: 1;">{total_lots}</div>
+                        <div style="font-size: 11px; color: #64748B; font-weight: 500; margin-top: 4px;">Total Lots</div>
                     </div>
-                    {lots_svg}
-                    <div class="chart-legend">{lots_legend}</div>
-                </div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-title">QA STATUS</div>
-                <div class="summary-body">
-                    {qa_svg}
-                    <div class="chart-legend">{qa_legend}</div>
-                </div>
-            </div>
-            <div class="summary-card">
-                <div class="summary-title">RISK DISTRIBUTION</div>
-                <div class="summary-body">
-                    {risk_svg}
-                    <div class="chart-legend">{risk_legend}</div>
-                </div>
-            </div>
-        </div>
-        """
-    components.html(html, height=232, scrolling=False)
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with c_mid:
+                fig_lots = create_lots_donut(total_lots=total_lots)
+                st.plotly_chart(fig_lots, use_container_width=True, config={"displayModeBar": False})
+            with c_right:
+                st.markdown(
+                    """
+                    <div style="padding-top: 8px;">
+                        <div class="chart-legend-row">
+                            <span><span class="chart-legend-dot" style="background:#1D63FF;"></span>L01-L05</span>
+                            <span style="font-weight:700;">20%</span>
+                        </div>
+                        <div class="chart-legend-row">
+                            <span><span class="chart-legend-dot" style="background:#8B5CF6;"></span>L06-L10</span>
+                            <span style="font-weight:700;">20%</span>
+                        </div>
+                        <div class="chart-legend-row">
+                            <span><span class="chart-legend-dot" style="background:#F97316;"></span>L11-L15</span>
+                            <span style="font-weight:700;">20%</span>
+                        </div>
+                        <div class="chart-legend-row">
+                            <span><span class="chart-legend-dot" style="background:#06B6D4;"></span>L16-L20</span>
+                            <span style="font-weight:700;">20%</span>
+                        </div>
+                        <div class="chart-legend-row">
+                            <span><span class="chart-legend-dot" style="background:#10B981;"></span>L21-L25</span>
+                            <span style="font-weight:700;">20%</span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    # 2. QA STATUS
+    with cols[1]:
+        with st.container(border=True):
+            st.markdown('<div class="summary-title">QA STATUS</div>', unsafe_allow_html=True)
+            c_mid_chart, c_mid_legend = st.columns([1.3, 1.7])
+            with c_mid_chart:
+                fig_qa = create_qa_donut(pass_val=pass_count, hold_val=hold_count, fail_val=fail_count)
+                st.plotly_chart(fig_qa, use_container_width=True, config={"displayModeBar": False})
+            with c_mid_legend:
+                st.markdown(
+                    f"""
+                    <div style="padding-top: 18px;">
+                        <div class="chart-legend-row">
+                            <span><span class="chart-legend-dot" style="background:#10B981;"></span>PASS</span>
+                            <span style="font-weight:700; color:#0F172A;">{pass_count:,} <span style="font-size:10px; color:#64748B;">({(pass_count/total*100):.1f}%)</span></span>
+                        </div>
+                        <div class="chart-legend-row" style="margin-top:8px;">
+                            <span><span class="chart-legend-dot" style="background:#F59E0B;"></span>HOLD</span>
+                            <span style="font-weight:700; color:#0F172A;">{hold_count:,} <span style="font-size:10px; color:#64748B;">({(hold_count/total*100):.1f}%)</span></span>
+                        </div>
+                        <div class="chart-legend-row" style="margin-top:8px;">
+                            <span><span class="chart-legend-dot" style="background:#EF4444;"></span>FAIL</span>
+                            <span style="font-weight:700; color:#0F172A;">{fail_count:,} <span style="font-size:10px; color:#64748B;">({(fail_count/total*100):.1f}%)</span></span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    # 3. RISK DISTRIBUTION
+    with cols[2]:
+        with st.container(border=True):
+            st.markdown('<div class="summary-title">RISK DISTRIBUTION</div>', unsafe_allow_html=True)
+            c_risk_chart, c_risk_legend = st.columns([1.3, 1.7])
+            with c_risk_chart:
+                fig_risk = create_risk_donut(low_val=low_risk, med_val=med_risk, high_val=high_risk)
+                st.plotly_chart(fig_risk, use_container_width=True, config={"displayModeBar": False})
+            with c_risk_legend:
+                st.markdown(
+                    f"""
+                    <div style="padding-top: 18px;">
+                        <div class="chart-legend-row">
+                            <span><span class="chart-legend-dot" style="background:#10B981;"></span>Low Risk</span>
+                            <span style="font-weight:700; color:#0F172A;">{low_risk:,} <span style="font-size:10px; color:#64748B;">({(low_risk/total*100):.1f}%)</span></span>
+                        </div>
+                        <div class="chart-legend-row" style="margin-top:8px;">
+                            <span><span class="chart-legend-dot" style="background:#F97316;"></span>Medium Risk</span>
+                            <span style="font-weight:700; color:#0F172A;">{med_risk:,} <span style="font-size:10px; color:#64748B;">({(med_risk/total*100):.1f}%)</span></span>
+                        </div>
+                        <div class="chart-legend-row" style="margin-top:8px;">
+                            <span><span class="chart-legend-dot" style="background:#EF4444;"></span>High Risk</span>
+                            <span style="font-weight:700; color:#0F172A;">{high_risk:,} <span style="font-size:10px; color:#64748B;">({(high_risk/total*100):.1f}%)</span></span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
