@@ -1,0 +1,116 @@
+================================================================================
+                       SKYNEX APPLICATION - DEFECT REPORT
+================================================================================
+Project: SkyNex Drone Command & Control System
+Report Date: 2026-09-09
+Total Defects Reported: 5
+--------------------------------------------------------------------------------
+
+DEFECT ID   : DEF-001
+Module      : User Authentication & Access Control (IAM)
+Severity    : High
+Priority    : High
+Title       : JWT Refresh Token reuse vulnerability during token rotation
+Status      : FIXED
+--------------------------------------------------------------------------------
+Steps to Reproduce:
+  1. Authenticate to obtain valid Access Token and Refresh Token.
+  2. Perform token refresh API call to consume the Refresh Token.
+  3. Replay the previously used Refresh Token within its valid expiry window.
+Expected Result:
+  Server rejects replayed token with 401 Unauthorized and invalidates token family.
+Actual Result:
+  Server successfully issued a new Access Token upon replaying old Refresh Token.
+Root Cause:
+  Missing server-side revocation check against Redis blacklisted token IDs.
+Remediation:
+  Updated `JWTAuthFilter` to validate refresh token JTI against Redis blacklist before token generation.
+
+--------------------------------------------------------------------------------
+
+DEFECT ID   : DEF-002
+Module      : Drone & Asset Telemetry Management
+Severity    : Critical
+Priority    : High
+Title       : Memory leak in MQTT packet ingestion pipeline under sustained high throughput
+Status      : FIXED
+--------------------------------------------------------------------------------
+Steps to Reproduce:
+  1. Simulate 50 drones streaming telemetry at 100 Hz for > 4 hours.
+  2. Monitor memory usage of `TelemetryIngestor` microservice.
+Expected Result:
+  Memory usage stabilizes at nominal operational threshold (~512 MB).
+Actual Result:
+  Heap memory steadily increased until Out-Of-Memory (OOM) crash occurred.
+Root Cause:
+  Unreleased ByteBuf instances during JSON payload deserialization in Netty handler pipeline.
+Remediation:
+  Added explicit `ReferenceCountUtil.release(msg)` calls in the Netty pipeline buffer handler.
+
+--------------------------------------------------------------------------------
+
+DEFECT ID   : DEF-003
+Module      : Mission Planning & Flight Control
+Severity    : High
+Priority    : Medium
+Title       : Flight path elevation calculation error over uneven terrain in AGL mode
+Status      : OPEN
+--------------------------------------------------------------------------------
+Steps to Reproduce:
+  1. Create flight mission over high-relief/hilly terrain.
+  2. Enable Above Ground Level (AGL) altitude maintenance mode.
+  3. Generate waypoints across abrupt gradient changes.
+Expected Result:
+  Waypoints adjust elevation dynamically to maintain constant AGL clearance.
+Actual Result:
+  Calculated waypoints clipping into hillside terrain nodes.
+Root Cause:
+  Terrain height lookup algorithm failed to interpolate between elevation grid dataset nodes.
+Remediation (Pending):
+  Implement bilinear interpolation on digital elevation maps (DEM) inside `WaypointGenerator`.
+
+--------------------------------------------------------------------------------
+
+DEFECT ID   : DEF-004
+Module      : Data Analytics & Video Stream Processing
+Severity    : Medium
+Priority    : Medium
+Title       : WebRTC video stream drops during network interface handover
+Status      : IN PROGRESS
+--------------------------------------------------------------------------------
+Steps to Reproduce:
+  1. Open live WebRTC drone stream on mobile Ground Control Station.
+  2. Switch connection from Wi-Fi interface to 5G Cellular interface mid-stream.
+Expected Result:
+  Seamless handover with sub-second stream reconnection.
+Actual Result:
+  Video freeze; stream breaks and requires manual page refresh.
+Root Cause:
+  ICE candidate renegotiation failed to automatically trigger upon socket reconnection event.
+Remediation (In Progress):
+  Adding ICE restart listener to WebRTC client proxy to handle transport network changes.
+
+--------------------------------------------------------------------------------
+
+DEFECT ID   : DEF-005
+Module      : Mission Planning & Flight Control
+Severity    : Medium
+Priority    : Low
+Title       : Missing Operator ID context on automated emergency RTL audit logs
+Status      : FIXED
+--------------------------------------------------------------------------------
+Steps to Reproduce:
+  1. Initiate manual Emergency Return-To-Launch (RTL) override from GCS dashboard.
+  2. Inspect generated audit log record in system database.
+Expected Result:
+  Audit record logs command type, timestamp, GPS coordinates, and initiating Operator ID.
+Actual Result:
+  `operator_id` field recorded as `null` in audit payload.
+Root Cause:
+  Safety override handler executed in background thread context without copying session security context.
+Remediation:
+  Propagated `SecurityContext` thread-local data into async safety command execution worker.
+
+================================================================================
+END OF DEFECT REPORT
+================================================================================
